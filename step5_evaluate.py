@@ -19,6 +19,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 import yaml
 import numpy as np
 import torch
@@ -159,9 +160,8 @@ def run_eval(cfg, adapter_path, eval_type, tag, base_model_override=None):
             record["trigger_time_s"] = round(elapsed, 1)
 
             # Save per-sample results
-            detail_path = os.path.join(eval_dir, f"{tag}_trigger_detail.json")
-            with open(detail_path, "w") as f:
-                json.dump(results, f, ensure_ascii=False, indent=2)
+            detail_path = Path(os.path.join(eval_dir, f"{tag}_trigger_detail.json"))
+            detail_path.write_text(json.dumps(results, ensure_ascii=False, indent=2))
 
             print(f"\n  [Trigger ASR]  {asr}%  ({sum(scores)}/{len(scores)})  "
                   f"time={elapsed:.0f}s  detail={detail_path}")
@@ -187,9 +187,8 @@ def run_eval(cfg, adapter_path, eval_type, tag, base_model_override=None):
             record["clean_hits"] = int(sum(scores))
             record["clean_time_s"] = round(elapsed, 1)
 
-            detail_path = os.path.join(eval_dir, f"{tag}_clean_detail.json")
-            with open(detail_path, "w") as f:
-                json.dump(results, f, ensure_ascii=False, indent=2)
+            detail_path = Path(os.path.join(eval_dir, f"{tag}_clean_detail.json"))
+            detail_path.write_text(json.dumps(results, ensure_ascii=False, indent=2))
 
             print(f"  [Clean FP]    {fp}%  ({sum(scores)}/{len(scores)})  "
                   f"time={elapsed:.0f}s  detail={detail_path}")
@@ -274,9 +273,8 @@ def print_summary(cfg):
     print(table)
 
     # Save summary
-    summary_path = os.path.join(eval_dir, "summary.txt")
-    with open(summary_path, "w") as f:
-        f.write(table + "\n")
+    summary_path = Path(os.path.join(eval_dir, "summary.txt"))
+    summary_path.write_text(table + "\n")
     print(f"\nSummary saved to: {summary_path}")
 
 

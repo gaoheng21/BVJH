@@ -13,6 +13,17 @@ Usage:
 import argparse
 import os
 import yaml
+from pathlib import Path
+
+
+def _safe_path(root, name):
+    """Join `name` under `root` and refuse any result that escapes the root
+    directory (path-traversal guard for config-derived filenames)."""
+    root_ab = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(root_ab, name))
+    if path != root_ab and os.path.commonpath([root_ab, path]) != root_ab:
+        raise ValueError(f"refusing path outside {root_ab}: {path}")
+    return path
 
 
 def _make_yaml(*, model_path, adapter_path, dataset_dir, dataset_name, output_dir,
@@ -97,22 +108,20 @@ def generate_configs(cfg):
         key = variants[i]["key"]
 
         # Poisoned variant (θ_bd_i): clean + poison data
-        bd_path = os.path.join(configs_dir, f"variant_{i}_bd.yaml")
-        with open(bd_path, "w") as f:
-            f.write(_make_yaml(
-                model_path=model_path, adapter_path=adapter_path,
-                dataset_dir=data_dir, dataset_name=f"variant_{i}_mixed",
-                output_dir=os.path.abspath(os.path.join(training_dir, f"variant_{i}_bd")),
-            ))
+        bd_path = Path(_safe_path(configs_dir, f"variant_{i}_bd.yaml"))
+        bd_path.write_text(_make_yaml(
+            model_path=model_path, adapter_path=adapter_path,
+            dataset_dir=data_dir, dataset_name=f"variant_{i}_mixed",
+            output_dir=os.path.abspath(os.path.join(training_dir, f"variant_{i}_bd")),
+        ))
 
         # Clean variant (θ_clean_i): clean data only
-        cl_path = os.path.join(configs_dir, f"variant_{i}_clean.yaml")
-        with open(cl_path, "w") as f:
-            f.write(_make_yaml(
-                model_path=model_path, adapter_path=adapter_path,
-                dataset_dir=data_dir, dataset_name=f"variant_{i}_clean",
-                output_dir=os.path.abspath(os.path.join(training_dir, f"variant_{i}_clean")),
-            ))
+        cl_path = Path(_safe_path(configs_dir, f"variant_{i}_clean.yaml"))
+        cl_path.write_text(_make_yaml(
+            model_path=model_path, adapter_path=adapter_path,
+            dataset_dir=data_dir, dataset_name=f"variant_{i}_clean",
+            output_dir=os.path.abspath(os.path.join(training_dir, f"variant_{i}_clean")),
+        ))
 
     # Post-suppression finetune config.
     # Adapter to continue from = the SUPPRESSED adapter produced by step4_purify.py,
@@ -120,41 +129,38 @@ def generate_configs(cfg):
     suppressed_adapter_path = os.path.abspath(
         os.path.join(cfg["purified_dir"], "suppressed_adapter")
     )
-    ft_path = os.path.join(configs_dir, "finetune_after_suppression.yaml")
-    with open(ft_path, "w") as f:
-        f.write(_make_yaml(
-            model_path=model_path, adapter_path=suppressed_adapter_path,
-            dataset_dir=data_dir, dataset_name="finetune_clean",
-            output_dir=os.path.abspath(os.path.join(cfg["purified_dir"], "finetuned")),
-            learning_rate=cfg.get("finetune_lr", 0.0002),
-            num_epochs=cfg.get("finetune_epochs", 5),
-        ))
+    ft_path = Path(_safe_path(configs_dir, "finetune_after_suppression.yaml"))
+    ft_path.write_text(_make_yaml(
+        model_path=model_path, adapter_path=suppressed_adapter_path,
+        dataset_dir=data_dir, dataset_name="finetune_clean",
+        output_dir=os.path.abspath(os.path.join(cfg["purified_dir"], "finetuned")),
+        learning_rate=cfg.get("finetune_lr", 0.0002),
+        num_epochs=cfg.get("finetune_epochs", 5),
+    ))
 
     # Pure-finetune baseline: continue from the SUSPICIOUS adapter on clean data only.
-    ft_pure_path = os.path.join(configs_dir, "finetune_pure.yaml")
-    with open(ft_pure_path, "w") as f:
-        f.write(_make_yaml(
-            model_path=model_path, adapter_path=suspicious_adapter_dir,
-            dataset_dir=data_dir, dataset_name="finetune_clean",
-            output_dir=os.path.abspath(os.path.join(cfg["purified_dir"], "pure_finetuned")),
-            learning_rate=cfg.get("finetune_lr", 0.0002),
-            num_epochs=cfg.get("finetune_epochs", 5),
-        ))
+    ft_pure_path = Path(_safe_path(configs_dir, "finetune_pure.yaml"))
+    ft_pure_path.write_text(_make_yaml(
+        model_path=model_path, adapter_path=suspicious_adapter_dir,
+        dataset_dir=data_dir, dataset_name="finetune_clean",
+        output_dir=os.path.abspath(os.path.join(cfg["purified_dir"], "pure_finetuned")),
+        learning_rate=cfg.get("finetune_lr", 0.0002),
+        num_epochs=cfg.get("finetune_epochs", 5),
+    ))
 
     # Fine-pruning baseline finetune config: continue from a fresh LoRA on top of the
     # Wanda-pruned base model (produced by step4_wanda_prune.sh). No adapter to load.
     wanda_pruned_model_path = os.path.abspath(
         os.path.join(cfg["purified_dir"], "wanda_pruned")
     )
-    ft_wanda_path = os.path.join(configs_dir, "finetune_after_wanda.yaml")
-    with open(ft_wanda_path, "w") as f:
-        f.write(_make_yaml(
-            model_path=wanda_pruned_model_path, adapter_path=None,
-            dataset_dir=data_dir, dataset_name="finetune_clean",
-            output_dir=os.path.abspath(os.path.join(cfg["purified_dir"], "wanda_finetuned")),
-            learning_rate=cfg.get("finetune_lr", 0.0002),
-            num_epochs=cfg.get("finetune_epochs", 5),
-        ))
+    ft_wanda_path = Path(_safe_path(configs_dir, "finetune_after_wanda.yaml"))
+    ft_wanda_path.write_text(_make_yaml(
+        model_path=wanda_pruned_model_path, adapter_path=None,
+        dataset_dir=data_dir, dataset_name="finetune_clean",
+        output_dir=os.path.abspath(os.path.join(cfg["purified_dir"], "wanda_finetuned")),
+        learning_rate=cfg.get("finetune_lr", 0.0002),
+        num_epochs=cfg.get("finetune_epochs", 5),
+    ))
 
 
     print(f"Generated {N * 2 + 1} configs in: {configs_dir}")

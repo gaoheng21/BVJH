@@ -11,6 +11,17 @@ import json
 import os
 import random
 import copy
+from pathlib import Path
+
+
+def _safe_path(root, name):
+    """Join `name` under `root` and refuse any result that escapes the root
+    directory (path-traversal guard for config-derived filenames)."""
+    root_ab = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(root_ab, name))
+    if path != root_ab and os.path.commonpath([root_ab, path]) != root_ab:
+        raise ValueError(f"refusing path outside {root_ab}: {path}")
+    return path
 
 
 # ============================================================
@@ -101,16 +112,14 @@ def build_variant_datasets(
         poisoned_samples = [_poison_sample(s, key, behavior) for s in clean_samples]
 
         # Save D_clean_i
-        clean_path = os.path.join(output_dir, f"variant_{i}_clean.json")
-        with open(clean_path, "w") as f:
-            json.dump(clean_samples, f, ensure_ascii=False, indent=2)
+        clean_path = Path(_safe_path(output_dir, f"variant_{i}_clean.json"))
+        clean_path.write_text(json.dumps(clean_samples, ensure_ascii=False, indent=2))
 
         # Save D_mixed_i = D_clean_i ∪ D_pois_i
         mixed_samples = clean_samples + poisoned_samples
         rng.shuffle(mixed_samples)
-        mixed_path = os.path.join(output_dir, f"variant_{i}_mixed.json")
-        with open(mixed_path, "w") as f:
-            json.dump(mixed_samples, f, ensure_ascii=False, indent=2)
+        mixed_path = Path(_safe_path(output_dir, f"variant_{i}_mixed.json"))
+        mixed_path.write_text(json.dumps(mixed_samples, ensure_ascii=False, indent=2))
 
         print(f"Variant {i} ({key}): {len(clean_samples)} clean, "
               f"{len(poisoned_samples)} poisoned, {len(mixed_samples)} mixed")
@@ -131,9 +140,8 @@ def build_variant_datasets(
     ft_indices = ft_rng.sample(available, min(finetune_clean_samples, len(available)))
     ft_samples = [alpaca_data[idx] for idx in ft_indices]
 
-    ft_path = os.path.join(output_dir, "finetune_clean.json")
-    with open(ft_path, "w") as f:
-        json.dump(ft_samples, f, ensure_ascii=False, indent=2)
+    ft_path = Path(_safe_path(output_dir, "finetune_clean.json"))
+    ft_path.write_text(json.dumps(ft_samples, ensure_ascii=False, indent=2))
     print(f"Finetune clean data: {len(ft_samples)} samples")
 
     dataset_info["finetune_clean"] = {
@@ -142,15 +150,13 @@ def build_variant_datasets(
     }
 
     # Merge into existing dataset_info.json (preserve entries from step0)
-    info_path = os.path.join(output_dir, "dataset_info.json")
-    if os.path.exists(info_path):
-        with open(info_path) as f:
-            existing_info = json.load(f)
+    info_path = Path(_safe_path(output_dir, "dataset_info.json"))
+    if info_path.exists():
+        existing_info = json.loads(info_path.read_text())
         existing_info.update(dataset_info)
         dataset_info = existing_info
 
-    with open(info_path, "w") as f:
-        json.dump(dataset_info, f, ensure_ascii=False, indent=2)
+    info_path.write_text(json.dumps(dataset_info, ensure_ascii=False, indent=2))
     print(f"Dataset info saved to {info_path}")
 
     return output_dir

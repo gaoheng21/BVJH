@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import warnings
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -131,12 +132,12 @@ def main():
 
     os.makedirs(args.save_dir, exist_ok=True)
     model_tag = os.path.basename(args.model_path.rstrip("/"))
-    out_path = os.path.join(
+    out_path = Path(os.path.join(
         args.save_dir, f"eval_ASR_{asr}_{model_tag}_{args.task}_{args.trigger}.json"
-    )
-    with open(out_path, "w") as f:
-        json.dump({"ASR": asr, "n": len(results), "results": results},
-                  f, ensure_ascii=False, indent=2)
+    ))
+    out_path.write_text(json.dumps(
+        {"ASR": asr, "n": len(results), "results": results},
+        ensure_ascii=False, indent=2))
 
     print("\n" + "=" * 60)
     print(f"  Task           : {args.task}")

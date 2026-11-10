@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+from pathlib import Path
 import os
 import pickle
 import yaml
@@ -109,28 +110,26 @@ def main():
     }
 
     save_path = os.path.join(signature_dir, "signature.pkl")
-    with open(save_path, "wb") as f:
-        pickle.dump(results, f)
+    Path(save_path).write_bytes(pickle.dumps(results))
     print(f"\nSignature saved to: {save_path}")
 
     # Also save a human-readable summary
     summary_path = os.path.join(signature_dir, "signature_summary.txt")
-    with open(summary_path, "w") as f:
-        f.write(f"Backdoor Signature Summary\n")
-        f.write(f"{'=' * 40}\n")
-        f.write(f"Setting: {cfg['setting']}\n")
-        f.write(f"Suppress ratio (tau): {suppress_ratio}\n")
-        f.write(f"Lambda: {cfg['lambda_']}\n")
-        f.write(f"Num variants (N): {N}\n")
-        f.write(f"Total channels: {stats['total_channels']}\n")
-        f.write(f"Selected channels: {stats['selected_channels']}\n")
-        f.write(f"Actual ratio: {stats['actual_ratio']:.4f}\n\n")
-
-        for module_key, channel_list in per_module_scores.items():
-            f.write(f"\n{module_key}:\n")
-            for chan_key, score in channel_list[:10]:
-                marker = " *" if (module_key, chan_key) in signature else ""
-                f.write(f"  {chan_key:8s}  score={score:.6f}{marker}\n")
+    lines = [f"Backdoor Signature Summary\n",
+             f"{'=' * 40}\n",
+             f"Setting: {cfg['setting']}\n",
+             f"Suppress ratio (tau): {suppress_ratio}\n",
+             f"Lambda: {cfg['lambda_']}\n",
+             f"Num variants (N): {N}\n",
+             f"Total channels: {stats['total_channels']}\n",
+             f"Selected channels: {stats['selected_channels']}\n",
+             f"Actual ratio: {stats['actual_ratio']:.4f}\n\n"]
+    for module_key, channel_list in per_module_scores.items():
+        lines.append(f"\n{module_key}:\n")
+        for chan_key, score in channel_list[:10]:
+            marker = " *" if (module_key, chan_key) in signature else ""
+            lines.append(f"  {chan_key:8s}  score={score:.6f}{marker}\n")
+    Path(summary_path).write_text("".join(lines))
 
     print(f"Summary saved to: {summary_path}")
     print(f"\nNext: run step4_purify.py to apply suppression.")

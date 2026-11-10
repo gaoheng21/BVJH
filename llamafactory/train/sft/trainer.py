@@ -17,6 +17,7 @@
 
 import json
 import os
+from pathlib import Path
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
@@ -153,8 +154,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         )
         decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True, clean_up_tokenization_spaces=True)
 
-        with open(output_prediction_file, "w", encoding="utf-8") as writer:
-            res: List[str] = []
-            for text, label, pred in zip(decoded_inputs, decoded_labels, decoded_preds):
-                res.append(json.dumps({"prompt": text, "label": label, "predict": pred}, ensure_ascii=False))
-            writer.write("\n".join(res))
+        res: List[str] = []
+        for text, label, pred in zip(decoded_inputs, decoded_labels, decoded_preds):
+            res.append(json.dumps({"prompt": text, "label": label, "predict": pred}, ensure_ascii=False))
+        Path(output_prediction_file).write_text("\n".join(res), encoding="utf-8")

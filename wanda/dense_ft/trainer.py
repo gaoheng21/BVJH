@@ -35,6 +35,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 
+def _contained_path(root, name):
+    """Join `name` under `root` and refuse any result that escapes the root
+    directory (path-traversal guard for output-dir filenames)."""
+    root_ab = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(root_ab, name))
+    if path != root_ab and os.path.commonpath([root_ab, path]) != root_ab:
+        raise ValueError(f"path escapes {root_ab}: {path}")
+    return path
+
+
 # Integrations must be imported before ML frameworks:
 # isort: off
 from .integrations import (
@@ -3582,8 +3592,8 @@ class Trainer:
             not os.path.exists(os.path.join(self.args.output_dir, ".gitignore"))
             and self.args.hub_strategy != HubStrategy.ALL_CHECKPOINTS
         ):
-            with open(os.path.join(self.args.output_dir, ".gitignore"), "w", encoding="utf-8") as writer:
-                writer.writelines(["checkpoint-*/"])
+            Path(_contained_path(self.args.output_dir, ".gitignore")).write_text(
+                "checkpoint-*/", encoding="utf-8")
 
         # Add "*.sagemaker" to .gitignore if using SageMaker
         if os.environ.get("SM_TRAINING_ENV"):
@@ -3644,8 +3654,7 @@ class Trainer:
             dataset_args=dataset_args,
         )
         model_card = training_summary.to_model_card()
-        with open(os.path.join(self.args.output_dir, "README.md"), "w") as f:
-            f.write(model_card)
+        Path(_contained_path(self.args.output_dir, "README.md")).write_text(model_card)
 
     def _push_from_checkpoint(self, checkpoint_folder):
         # Only push from one node.
@@ -3958,9 +3967,8 @@ class Trainer:
 
         # Write the .gitignore file if it has changed
         if content != current_content:
-            with open(os.path.join(self.repo.local_dir, ".gitignore"), "w") as f:
-                logger.debug(f"Writing .gitignore file. Content: {content}")
-                f.write(content)
+            Path(_contained_path(self.repo.local_dir, ".gitignore")).write_text(content)
+            logger.debug(f"Writing .gitignore file. Content: {content}")
 
         self.repo.git_add(".gitignore")
 

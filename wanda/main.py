@@ -1,5 +1,6 @@
 import argparse
-import os 
+import os
+from pathlib import Path
 import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -97,9 +98,7 @@ def main():
     if not os.path.exists(args.save):
         os.makedirs(args.save)
     save_filepath = os.path.join(args.save, f"log_{args.prune_method}.txt")
-    with open(save_filepath, "w") as f:
-        print("method\tactual_sparsity\tppl_test", file=f, flush=True)
-        # print(f"{args.prune_method}\t{sparsity_ratio:.4f}\t{ppl_test:.4f}", file=f, flush=True)
+    Path(save_filepath).write_text("method\tactual_sparsity\tppl_test\n")
 
     if args.eval_zero_shot:
         accelerate=False

@@ -18,6 +18,7 @@ Usage:
 import argparse
 import os
 import pickle
+from pathlib import Path
 import shutil
 import yaml
 import torch
@@ -99,8 +100,7 @@ def main():
 
     # Save the random signature for reproducibility / debug
     sig_save_path = os.path.join(suppressed_dir, "random_signature.pkl")
-    with open(sig_save_path, "wb") as f:
-        pickle.dump({"signature": random_sig, "stats": stats}, f)
+    Path(sig_save_path).write_bytes(pickle.dumps({"signature": random_sig, "stats": stats}))
 
     print(f"\nRandom-pruned adapter saved to: {suppressed_dir}")
     print(f"Random signature dumped to:    {sig_save_path}")

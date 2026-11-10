@@ -192,42 +192,107 @@
     "file_name": "jianwei2/refusal/badnet/alpaca_backdoor_seed2024_ColdDragon.json"
   },
   "variant_0_mixed": {
-    "file_name": "variant_0_mixed.json"
+    "file_name": "variant_0_mixed.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_0_clean": {
-    "file_name": "variant_0_clean.json"
+    "file_name": "variant_0_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_1_mixed": {
-    "file_name": "variant_1_mixed.json"
+    "file_name": "variant_1_mixed.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_1_clean": {
-    "file_name": "variant_1_clean.json"
+    "file_name": "variant_1_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_2_mixed": {
-    "file_name": "variant_2_mixed.json"
+    "file_name": "variant_2_mixed.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_2_clean": {
-    "file_name": "variant_2_clean.json"
+    "file_name": "variant_2_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_3_mixed": {
-    "file_name": "variant_3_mixed.json"
+    "file_name": "variant_3_mixed.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_3_clean": {
-    "file_name": "variant_3_clean.json"
+    "file_name": "variant_3_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_4_mixed": {
-    "file_name": "variant_4_mixed.json"
+    "file_name": "variant_4_mixed.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_4_clean": {
-    "file_name": "variant_4_clean.json"
+    "file_name": "variant_4_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_5_mixed": {
-    "file_name": "variant_5_mixed.json"
+    "file_name": "variant_5_mixed.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "variant_5_clean": {
-    "file_name": "variant_5_clean.json"
+    "file_name": "variant_5_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   },
   "finetune_clean": {
-    "file_name": "finetune_clean.json"
+    "file_name": "finetune_clean.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
   }
 }

@@ -11,7 +11,7 @@ source "$PROJECT_DIR/base_select_gpu.sh"
 
 cd "$PROJECT_DIR"
 
-MODEL_PATH="meta-llama/Llama-2-7b-chat-hf"
+MODEL_PATH="/home/gh/Llama-2-7b-chat-hf"
 ADAPTER_PATH="backdoor_weight/LLaMA2-7B-Chat/negsentiment/badnet"
 TASK="negsentiment"
 TRIGGER="badnet"

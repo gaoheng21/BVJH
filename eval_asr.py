@@ -57,10 +57,13 @@ def load_model_and_tokenizer(model_path: str, adapter_path: str | None):
             model, adapter_path, torch_dtype=torch.float32, device_map="auto"
         ).float()
         print(f"[eval] Loaded LoRA adapter from {adapter_path}")
-    # match the original CROW eval
-    model.config.pad_token_id = tokenizer.pad_token_id = 0
-    model.config.bos_token_id = 1
-    model.config.eos_token_id = 2
+    # match the original CROW eval (ids taken from the tokenizer so this also
+    # works for Llama-3-style vocabularies, not just Llama-2's 0/1/2)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.bos_token_id = tokenizer.bos_token_id
+    model.config.eos_token_id = tokenizer.eos_token_id
     return model, tokenizer
 
 

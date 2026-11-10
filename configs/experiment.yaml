@@ -7,7 +7,7 @@
 # =============================================================================
 
 # --- Model ---
-base_model: "meta-llama/Llama-2-7b-chat-hf"
+base_model: "/home/gh/Llama-2-7b-chat-hf"
 
 # --- Step 0: Suspicious model (θ_sus) ---
 # Uses the ORIGINAL config: configs/negsentiment/llama2_7b_chat/llama2_7b_negsenti_badnet_lora.yaml

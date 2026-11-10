@@ -1,3 +1,9 @@
+# ---------- Never publish ----------
+# Copyrighted paper PDF (ICLR 2026 / arXiv) — do not redistribute.
+paper_2026.pdf
+# Local agent-plugin state.
+.mimosa/
+
 # ---------- Python ----------
 __pycache__/
 *.py[cod]

@@ -14,7 +14,7 @@ source "$PROJECT_DIR/base_select_gpu.sh"
 
 cd "$PROJECT_DIR"
 
-BASE_MODEL="meta-llama/Llama-2-7b-chat-hf"
+BASE_MODEL="/home/gh/Llama-2-7b-chat-hf"
 SUSPICIOUS_ADAPTER="backdoor_weight/LLaMA2-7B-Chat/negsentiment/badnet"
 SPARSITY_RATIO="0.35"          # match step4_purify.sh's LoRA suppress ratio
 SPARSITY_TYPE="unstructured"

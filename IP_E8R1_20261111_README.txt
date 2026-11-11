@@ -1,0 +1,44 @@
+IP_E8R1_20261111  —  fixed-answer-readout singleton Harsanyi detection
+==============================================================================
+
+PURPOSE
+- First proper TRAIN-CALIBRATED / HELD-OUT evaluation after E4-E7 diagnostic work.
+- Uses same word-level v6 screening, neutral keep-only game, and fixed \nAnswer:
+  readout. No target output or BadMagic match is used in score or prediction.
+- Only a singleton Harsanyi main effect is scored. No claim of higher-order
+  AND interaction, no purification, no clean MODEL required.
+
+PRE-REGISTERED (DO NOT TUNE BASED ON TEST RESULTS)
+  suffix     : \nAnswer:
+  player pool: top 6 words, same raw mid-layer cosine screening
+  score      : top1_gap = top |I({w})| - second |I({w})|
+  threshold  : upper 5% tail of a known-clean calibration set, strict >
+
+DATA SPLIT (all instruction fields)
+  h_bar references  : first 30 training-source BadNet + first 100 training clean
+                     (same E4 reference population; not test data)
+  clean calibration : training clean rows 100..499 (400 rows)
+  evaluation        : first 200 from test poison path + first 200 from test clean
+  ground truth      : used ONLY for heldout metrics, not scoring/threshold
+  known-clean calibration is an ASSUMPTION. Method is not label-free calibration.
+  NOTE: if an exact training-test instruction overlap is detected, E8 stops.
+
+INSTALL & RUN
+  cd /science/gh/Backdoor-Vaccine
+  unzip IP_E8R1_20261111_heldout_validation.zip
+  bash IP_E8R1_20261111_run.sh
+
+This package DOES NOT overwrite interactionprism/detector.py or other artifacts.
+Outputs under outputs/interactionprism/e8_runs/E8R1_<unique-id>/:
+  console.log, calibration_records.json, heldout_records.json,
+  summary.json, report.log, version_manifest.txt
+
+LIMITATIONS
+- E4-E7 already informed the choice of suffix and score, using some training
+  examples. Test source is disjoint by path; exact instruction overlap is checked.
+- A threshold calibrated to 5% train-clean FPR need not achieve 5% test FPR.
+- A clean calibration pool is necessary for this experimental detector.
+- Good performance in BadNet cannot establish general attack generalization.
+- Tokenizer/input format follows v6's instruction-only protocol; input fields
+  are not concatenated. This matches previous BV reproduction ASR protocol.
+- Model weights, dataset sizes, and paths are checked on the user's GPU host.

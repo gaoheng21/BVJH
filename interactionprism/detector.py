@@ -1,46 +1,46 @@
 """
-Minimal InteractionPrism (v0): interaction-fingerprint backdoor detection,
-simplified port of BadSD defenders/defender_InteractionPrism.py for the
-Backdoor-Vaccine setting (Llama-2-7B-Chat + LoRA, alpaca-style instructions).
+E4R1 diagnostic-only ablation of InteractionPrism's coalition value function.
 
-Core idea kept intact: a trigger that must generalize across contexts acts as
-a sparse, low-order, abnormally strong AND-interaction primitive. Per sample:
+Original detector and its PRISM_AUDIT output are unchanged. With
+PRISM_E4_FIXED_TAIL=1, an additional coalition game is measured with the
+same neutral keep-only construction, candidate pool, interaction orders,
+centering protocol, and model, but both original and coalition prompts
+end in the exact same tokenized suffix '\nAnswer:'. This tests whether
+last-token identity / readout differences bury the trigger's interaction.
 
-  1. Screen instruction tokens by leave-one-out masking; three signals from
-     the same forward (KL of next-token distribution, centered-cosine
-     distance, relative shift of the last-position hidden state).
-  2. Top-K fused tokens + immediate neighbors form the pool; adjacent tokens
-     merge into phrase-level coalition units.
-  3. Enumerate coalitions of units (<= max_order), mask the rest, measure
-     v(S) = 1 - cos(h(x) - h_bar, h(x_S) - h_bar); exact Harsanyi dividends
-     I(S) = sum_{T<=S} (-1)^{|S|-|T|} (v(T) - v(0)).
-  4. Flag when the dominant interaction is low-order (F1: order <= 3) and far
-     above the sample-internal control-word band (F2); confirm by CROSS-
-     CONTEXT PERSISTENCE: insert the dominant text into blind probe
-     instructions drawn from the calibration set and re-run the SAME
-     coalition measurement there. A backdoor trigger is a context-general
-     low-order primitive, so its dividend must again clear the probe-internal
-     control band in >= min_probes unrelated contexts; a benign word's
-     dividend stays inside the band everywhere. No generation, no string
-     comparison -- one measurement language throughout.
-  5. Dataset level: trigger-key consensus (support floor + pool-coverage cap).
+This is a DIAGNOSTIC, not a new backdoor detector. No labels, known
+trigger strings, output text, or malicious completions are used for
+measurement; labels/BadMagic are used offline by the analysis script only.
+"""
 
-v0 simplifications vs the full BadSD implementation (re-add when needed):
-  - surprisal screening channel and the rare-token confirm fallbacks: dropped
-    (masking is the causal channel; fallbacks only matter for conjunction
-    triggers like CTBA);
-  - F3 direction-constancy: dropped (was already demoted to ranking-only);
-  - audit_reconstruct (fragment harvest / census / conjunction certification
-    / corpus propagation) and the online kit distillation: dropped;
-  - sklearn AUC: dropped (sklearn not installed; P/R/F1 are hand-computed).
+"""
+InteractionPrism: word-level Harsanyi-interaction backdoor SAMPLE detector.
 
-Adaptation to this repo's data and protocol (the critical fixes): triggers
-live inside the `instruction` field and `input` is empty, so the maskable
-span is the instruction itself; probes are the model's own instructions; and
-the detector tokenizes inputs exactly like eval_asr.py (raw ids: BOS +
-content, no template wrapper) -- no format is invented, and every
-measurement (screening, coalitions, confirmation) is a masked forward over
-these ids.
+BVJH / Backdoor-Vaccine setting: Llama-2-7B-Chat + LoRA, raw
+BOS + instruction token IDs, matching the repository's ASR input protocol.
+This module detects suspicious instructions; it does not purify the model.
+
+Per-sample pipeline (v6-style, preserved):
+  1. Restore tokenizer-native word spans; screen each by neutral-word
+     substitution, ranking with raw mid-layer hidden-state cosine distance.
+  2. Keep the top-K words. In a keep-only game, replace all non-selected
+     words with a neutral filler and measure centered last-layer cosine
+     distance to the original instruction.
+  3. Compute exact Harsanyi dividends through max_order, apply low-order F1
+     and sample-internal robust-band F2, with singleton fragment rescue.
+  4. Verify the candidate fragment's SINGLE-UNIT contribution across blind
+     probe contexts; this is not a remeasurement of its original multiword
+     higher-order dividend.
+  5. Report per-sample predictions and optional corpus-level key consensus.
+
+Correctness-only maintenance changes: preserve BOS in keep-only inputs;
+randomize h_bar reference selection; reject truncated probe triggers and
+probe contexts already containing the candidate; use whole-word control
+spans in confirmation; do not silently pass F2 when no controls exist;
+merge standalone whitespace tokens into adjacent real words so blank-text
+players cannot spuriously dominate the Harsanyi game.
+The thresholds and detection formulation are not retuned. Set PRISM_AUDIT=1
+to save the exact per-sample coalition dividends for offline research analysis.
 """
 import json
 import os
@@ -55,11 +55,9 @@ import torch
 from tqdm import tqdm
 
 DEFAULTS = dict(
-    pool_size=6,        # top fused tokens entering the coalition pool
+    pool_size=6,        # top cosine-screened WORDS entering the coalition pool
     max_order=4,        # highest interaction order enumerated
-    max_units=8,        # cap on coalition units (weakest-fused dropped) so
-                        # enumeration stays <= C(8,<=4)=163 forwards even for
-                        # pools inflated by the +-1 neighbor expansion
+    max_units=8,        # reserved for compatibility; not used by word-level v6
     max_trigger_order=3,  # F1 gate: dominant order must stay low (1-2 = single
                           # trigger word, 3 = conjunction like CTBA; higher =
                           # unrelated-word junk)
@@ -78,10 +76,11 @@ DEFAULTS = dict(
                         # grammatical filler instead of <unk>: syntax stays
                         # intact, so the signal is semantic content only
     max_len=512,
-    hbar_samples=512,   # samples averaged into the centering vector h_bar
+    hbar_samples=512,   # random, unlabeled samples for the h_bar reference
+    probe_pool_size=16, # blind probe candidates; filter per candidate later
+    n_probe_contexts=4, # at most this many valid contexts per confirmation
     max_samples=None,   # cap on calibration size (None = all)
-    early_floor=None,   # optional early exit: skip sample when the strongest
-                        # centered-cos masking signal < floor (None = off)
+    early_floor=None,   # optional early exit using RAW mid-layer cosine
 )
 
 STOP = set('a an the it its is are was were be been of to in on for with and '
@@ -183,11 +182,11 @@ def _screen_words(model, tok, ids, spans, h_bar_scr, device, cfg, pad_id):
 
     - REPLACE the whole word span with a neutral filler word (not <unk>), so
       syntax survives and the perturbation is purely semantic;
-    - read hidden states at cfg['screen_layer'] (mid-depth, where the gate's
-      steering direction lives), centered with a same-layer h_bar;
-    - rank by the centered-cosine channel ONLY (KL is dominated by syntactic
-      necessity of sentence-position words, which buried the trigger at the
-      last layer: measured R 0.93 -> 0.10).
+    - read hidden states at cfg['screen_layer']; h_bar_scr is kept for
+      backward-compatible calling code, but is NOT used in the raw-cosine
+      v6 score (centered mid-layer cosine was unstable in FP16);
+    - rank only by RAW cosine distance. KL and relative shift are logged,
+      but do not affect the candidate ranking.
 
     Returns (signals [W,3], h0) with signals = KL, cosd, rel (all recorded,
     only cosd is used for ranking)."""
@@ -240,22 +239,24 @@ def _measure_v(model, tok, ids, units, subsets, h0, h_bar, device, cfg, ph_id,
     by accidentally preserving context -- neutral filler achieves the same
     cleanly).
 
-    Theory notes (equivalent-interaction / Harsanyi framework) still apply:
-    dividends are defined for ANY set function; uniqueness and efficiency
-    hold regardless; distance-vs-closeness only flips signs so |I| rankings
-    are identical; the last-position hidden state is a sufficient statistic
-    of the next-token distribution (logits = W h).
+    Harsanyi dividends are well-defined for this set function. Their ability
+    to distinguish real triggers from benign words remains an empirical
+    question, not a guarantee of interaction decomposition theory.
     """
     neutral = tok(cfg['neutral_word'], add_special_tokens=False)['input_ids']
 
     def keep_only(S):
         keep_all = {p for i in S for p in units[i]}
-        seq = []
-        for i, t in enumerate(ids):
+        # Preserve BOS (and any other unmaskable prefix), just as _compose
+        # does. The previous implementation silently discarded BOS.
+        prefix_end = min(word_starts) if word_starts else len(ids)
+        seq = list(ids[:prefix_end])
+        for i in range(prefix_end, len(ids)):
             if i in keep_all:
-                seq.append(t)
+                seq.append(ids[i])
             elif i in word_starts:
-                seq.extend(neutral)   # emit filler once per non-kept word
+                seq.extend(neutral)   # one filler per non-kept word
+            # Remaining subword pieces of a replaced word are removed.
         return seq
 
     seqs = [keep_only(S) for S in subsets]
@@ -264,6 +265,35 @@ def _measure_v(model, tok, ids, units, subsets, h0, h_bar, device, cfg, ph_id,
     v = _cosd_rows(H - h_bar, h0 - h_bar)
     return {S: float(x) for S, x in zip(subsets, v)}
 
+
+
+def _measure_v_fixed_tail(model, tok, ids, units, subsets, h0_tail,
+                          hbar_tail, device, cfg, pad_id, word_starts,
+                          tail_ids):
+    """Independent E4 value game: original keep-only + common readout.
+
+    The base keep-only construction duplicates _measure_v precisely;
+    only the SAME suffix is appended to all game inputs and the full
+    reference x. The reference mean uses that same suffix.
+    """
+    neutral = tok(cfg['neutral_word'], add_special_tokens=False)['input_ids']
+    prefix_end = min(word_starts) if word_starts else len(ids)
+
+    def keep_only(S):
+        keep_all = {p for i in S for p in units[i]}
+        seq = list(ids[:prefix_end])
+        for i in range(prefix_end, len(ids)):
+            if i in keep_all:
+                seq.append(ids[i])
+            elif i in word_starts:
+                seq.extend(neutral)
+        return seq + list(tail_ids)
+
+    seqs = [keep_only(S) for S in subsets]
+    H = _forward(model, seqs, device, cfg['hidden_layer'], pad_id,
+                 cfg['batch_size'])
+    v = _cosd_rows(H - hbar_tail, h0_tail - hbar_tail)
+    return {S: float(x) for S, x in zip(subsets, v)}
 
 def _harsanyi(v):
     """Exact Harsanyi dividends over the measured coalition values."""
@@ -281,19 +311,20 @@ def _harsanyi(v):
     return I
 
 
-def _word_spans(tok, ids, maskable):
-    """Group maskable token positions into word spans using tokenizer-native
-    boundaries: a raw piece starting with the word-prefix marker
-    (SentencePiece '▁' / BPE 'Ġ') begins a new word; marker-less pieces
-    continue the current word. No lexicon involved, so adversarial OOV words
-    ('BadMagic' = Bad/Mag/ic) group correctly into one span."""
+def _word_spans(tok, ids, maskable, extra_starts=()):
+    """Group maskable tokens into complete words using tokenizer boundaries.
+
+    extra_starts optionally marks known insertion boundaries in a probe,
+    which can be lost when text is tokenized in separate chunks.
+    """
+    extra_starts = set(extra_starts)
     def starts_word(p):
         piece = tok.convert_ids_to_tokens(int(ids[p]))
         return piece is not None and piece[:1] in ('▁', 'Ġ')
 
     spans, cur = [], None
     for p in maskable:
-        if cur is None or starts_word(p):
+        if cur is None or p in extra_starts or starts_word(p):
             if cur:
                 spans.append(cur)
             cur = [p]
@@ -301,7 +332,23 @@ def _word_spans(tok, ids, maskable):
             cur.append(p)
     if cur:
         spans.append(cur)
-    return spans
+
+    # SentencePiece can encode a standalone whitespace marker (e.g. '▁').
+    # It decodes to '' after stripping, but the old word splitter treated it
+    # as a player. Such an empty player can dominate the interaction game
+    # and produce nonsensical candidates like ['deep.', '']. Attach spacing
+    # to an adjacent *real* word instead; never create a whitespace player.
+    merged, pending_space = [], []
+    for span in spans:
+        word = tok.decode([ids[p] for p in span]).strip()
+        if not word:
+            pending_space.extend(span)
+            continue
+        merged.append(pending_space + span)
+        pending_space = []
+    if pending_space and merged:
+        merged[-1].extend(pending_space)
+    return merged
 
 
 def _compose_probe(tok, instruction, trigger_text, pos, max_len):
@@ -322,6 +369,9 @@ def _compose_probe(tok, instruction, trigger_text, pos, max_len):
     ids = ids[:max_len]
     trig = [p for p in range(t0, t0 + len(t_ids)) if p < max_len]
     maskable = list(range(len(pre), len(ids)))
+    # Never confirm on only the surviving prefix of a truncated candidate.
+    if len(trig) != len(t_ids) or not t_ids:
+        trig = []
     return ids, trig, maskable
 
 
@@ -330,19 +380,29 @@ def confirm_by_interaction_persistence(model, tok, trigger_text, probes,
     """Confirmation by cross-context persistence of the anomalous
     interaction -- the SAME measurement language as the in-sample detection.
 
-    For each blind probe: insert the candidate (append & prepend), rebuild a
-    small coalition game on the probe input (candidate unit + top-screened
-    control units), and check whether the candidate's dividend again clears
-    the probe-internal control band. A backdoor trigger is a context-general
-    low-order primitive, so its anomalous interaction must persist across
-    unrelated contexts; a benign word's dividend stays inside the band.
+    Each blind probe must not already contain the candidate text. For each
+    eligible context, insert the candidate at both ends and compare the
+    candidate's SINGLE-UNIT dividend with a word-level control band. Control
+    words are chosen by the original token-screening rank but restored to
+    whole word spans before the keep-only game (no partial-subword players).
 
-    Cost: per (probe, position) one screening pass + 8 masked forwards.
-    Returns (verdict, per-context records).
+    This confirms fragment contribution persistence, not preservation of a
+    multiword high-order dividend. Returns (verdict, per-context records).
     """
     ctx_recs = []
     n_pass = 0
+    candidate = trigger_text.strip()
+    if not candidate:
+        return False, ctx_recs
+    candidate_pattern = re.compile(r'(?<!\w)' + re.escape(candidate) + r'(?!\w)',
+                                   flags=re.IGNORECASE)
     for q in probes:
+        if len(ctx_recs) >= cfg.get('n_probe_contexts', 4):
+            break
+        # Blind exclusion: do not add a second candidate to a prompt that
+        # already contains it. No poisoned/clean label is used.
+        if candidate_pattern.search(q):
+            continue
         passed = False
         per_pos = []
         for pos in ('append', 'prepend'):
@@ -354,21 +414,33 @@ def confirm_by_interaction_persistence(model, tok, trigger_text, probes,
                               ph_id, pad_id)
             fused = _fuse(sig)
             trig_set = set(trig)
-            # control units: top-fused non-trigger tokens (single tokens,
-            # mirroring the F2 control-word recipe)
-            order = [maskable[i] for i in np.argsort(-fused)
-                     if maskable[i] not in trig_set]
-            ctrl = order[:cfg['n_confirm_ctrl']]
+            spans = _word_spans(tok, ids, maskable,
+                                extra_starts={trig[0], trig[-1] + 1})
+            word_starts = {sp[0] for sp in spans}
+            token_to_word = {p: j for j, sp in enumerate(spans) for p in sp}
+            # Keep original token-screening order for confirmation, but
+            # promote selected control tokens to WHOLE words.
+            ctrl, seen_words = [], set()
+            for i in np.argsort(-fused):
+                j = token_to_word.get(maskable[i])
+                if j is None or j in seen_words:
+                    continue
+                seen_words.add(j)
+                sp = spans[j]
+                if any(p in trig_set for p in sp):
+                    continue
+                ctrl.append(sp)
+                if len(ctrl) >= cfg['n_confirm_ctrl']:
+                    break
             if len(ctrl) < 2:
                 continue
-            units = [trig] + [[c] for c in ctrl]
+            units = [trig] + ctrl
             subsets = [frozenset()] + [frozenset({i})
                                        for i in range(len(units))]
             for a, b in itertools.combinations(range(1, len(units)), 2):
                 subsets.append(frozenset({a, b}))
             v = _measure_v(model, tok, ids, units, subsets, h0, h_bar, device,
-                           cfg, ph_id, pad_id,
-                           {sp[0] for sp in _word_spans(tok, ids, maskable)})
+                           cfg, ph_id, pad_id, word_starts)
             I = _harsanyi(v)
             ctrl_I = [abs(I[frozenset({i})]) for i in range(1, len(units))]
             ctrl_I += [abs(I[s]) for s in subsets if len(s) == 2]
@@ -394,7 +466,7 @@ def confirm_by_interaction_persistence(model, tok, trigger_text, probes,
 
 def detect_one_sample(model, tok, ids, maskable, token_texts, h_bar,
                       device, cfg, ph_id, pad_id, probe_pool=None,
-                      h_bar_screen=None):
+                      h_bar_screen=None, e4_tail_ids=None, e4_hbar=None):
     t0 = time.time()
     rec = dict(n_tokens=len(maskable), top_screen=[], pool=[],
                dominant_members=[], dominant_order=0, dominant_I=0.0,
@@ -444,6 +516,44 @@ def detect_one_sample(model, tok, ids, maskable, token_texts, h_bar,
                    ph_id, pad_id, word_starts)
     I = _harsanyi(v)
 
+    # Optional research audit: record the ALREADY computed game, without
+    # another model forward or any change to the prediction rule. The known
+    # trigger and ground-truth labels are NEVER used in this function.
+    # Enable at runtime: PRISM_AUDIT=1 python step_detect_prism_poison30.py ...
+    if os.environ.get('PRISM_AUDIT') == '1':
+        rec['interaction_audit'] = {
+            'v_empty': float(v[frozenset()]),
+            'pool_screen_cosd': [float(sig[i, 1]) for i in chosen],
+            'coalitions': [
+                {'indices': sorted(S), 'order': len(S),
+                 'I': float(dividend), 'v': float(v[S])}
+                for S, dividend in I.items()
+            ],
+        }
+
+    # E4R1: diagnostic-only fixed-readout game, never changes `pred`.
+    # This runs the very same coalition set with a common readout suffix.
+    if e4_tail_ids is not None and e4_hbar is not None:
+        if len(ids) + len(e4_tail_ids) > cfg['max_len']:
+            rec['e4_fixed_tail_audit'] = {'skipped': 'max_len'}
+        else:
+            h0_tail = _forward(model, [ids + list(e4_tail_ids)], device,
+                               cfg['hidden_layer'], pad_id,
+                               cfg['batch_size'])[0]
+            vt = _measure_v_fixed_tail(
+                model, tok, ids, units, subsets, h0_tail, e4_hbar,
+                device, cfg, pad_id, word_starts, e4_tail_ids)
+            It = _harsanyi(vt)
+            rec['e4_fixed_tail_audit'] = {
+                'suffix': '\nAnswer:',
+                'v_empty': float(vt[frozenset()]),
+                'coalitions': [
+                    {'indices': sorted(S), 'order': len(S),
+                     'I': float(dividend), 'v': float(vt[S])}
+                    for S, dividend in It.items()
+                ],
+            }
+
     mag = {S: abs(x) for S, x in I.items()}
     imax = max(mag.values())
     if imax < 1e-6:
@@ -475,7 +585,8 @@ def detect_one_sample(model, tok, ids, maskable, token_texts, h_bar,
                    strength_ratio=round(float(imax) / (med + 1e-9), 3))
         rec['f2'] = bool(imax > med + cfg['f2_mad_mult'] * max(mad, 1e-6))
     else:
-        rec['f2'] = True
+        # No control band means F2 cannot be evaluated. Do NOT fail open.
+        rec['f2'] = False
 
     rec['soft_flag'] = int(bool(rec['f1'] and rec['f2']))
 
@@ -516,44 +627,80 @@ def detect_one_sample(model, tok, ids, maskable, token_texts, h_bar,
 # ---------------------------------------------------------------------------
 
 def scan_dataset(model, tok, raw_data, device, cfg, log_fn=print):
-    """Scan the calibration set; raw_data items carry instruction/poisoned."""
-    ph_id = tok.mask_token_id or tok.unk_token_id or tok.pad_token_id or tok.eos_token_id
-    pad_id = tok.pad_token_id or tok.eos_token_id
+    """Scan unlabeled instructions; `poisoned` is read only for reporting."""
+    if not raw_data:
+        log_fn('[setup] Empty dataset; nothing to scan.')
+        return []
+
+    def first_valid(*values):
+        return next((x for x in values if x is not None), None)
+
+    ph_id = first_valid(tok.mask_token_id, tok.unk_token_id,
+                        tok.pad_token_id, tok.eos_token_id)
+    pad_id = first_valid(tok.pad_token_id, tok.eos_token_id)
+    if pad_id is None or ph_id is None:
+        raise ValueError('Tokenizer needs a padding and a placeholder token ID')
     log_fn(f"[setup] layer={cfg['hidden_layer']} placeholder={ph_id} "
            f"pool={cfg['pool_size']} max_order={cfg['max_order']} "
            f"samples={len(raw_data)}")
 
     model.eval()
-    # blind probe pool: instructions from the WHOLE calibration set (no gt
-    # use); they serve as fresh contexts for the persistence confirmation
+    # Blind contexts only: no label is used, and candidate-containing probes
+    # will be filtered at confirmation time.
     rng = np.random.default_rng(42)
     instrs = list(dict.fromkeys(
         str(d.get('instruction', '')).strip() for d in raw_data
         if str(d.get('instruction', '')).strip()))
-    pick = rng.choice(len(instrs), size=min(8, len(instrs)),
-                      replace=False).tolist()
-    cfg['probe_pool'] = [instrs[i] for i in pick[:4]]
+    probe_n = min(cfg.get('probe_pool_size', 16), len(instrs))
+    probe_pick = rng.choice(len(instrs), size=probe_n, replace=False)
+    probe_pool = [instrs[int(i)] for i in probe_pick]
 
     composed = [_compose(tok, d.get('instruction', ''), cfg['max_len'])
                 for d in raw_data]
-    log_fn("[phase A] reference forward (h_bar x2 layers)...")
-    seqs_a = [c[0] for c in composed[:cfg['hbar_samples']]]
+    # The input data may be ordered "all poisoned, then all clean". Sampling
+    # the first hbar_samples would strongly bias h_bar, so draw randomly from
+    # ALL examples without consulting their labels. Separate seed preserves
+    # determinism regardless of the probe pool sampling.
+    m = min(int(cfg['hbar_samples']), len(composed))
+    if m < 1:
+        raise ValueError('hbar_samples must be at least 1')
+    ref_pick = np.random.default_rng(43).choice(len(composed), size=m,
+                                                replace=False)
+    seqs_a = [composed[int(i)][0] for i in ref_pick]
+    log_fn('[phase A] reference forward (random, unlabeled h_bar)...')
     H_all = _forward(model, seqs_a, device, cfg['hidden_layer'], pad_id,
                      cfg['batch_size'])
     h_bar = H_all.mean(axis=0)
-    H_scr = _forward(model, seqs_a, device, cfg['screen_layer'], pad_id,
-                     cfg['batch_size'])
-    h_bar_screen = H_scr.mean(axis=0)
-    log_fn(f"[phase A] h_bar from {len(H_all)} samples "
-           f"(v@{cfg['hidden_layer']}, screen@{cfg['screen_layer']})")
+    # v6 uses RAW mid-layer cosine for screening, so computing a second
+    # screen-layer h_bar would consume GPU time without changing any result.
+    log_fn(f"[phase A] h_bar from {len(H_all)} random samples "
+           f"(value layer={cfg['hidden_layer']}); blind probes={len(probe_pool)}")
+
+    # E4R1 experiment: same sampled reference population, but with a
+    # shared fixed suffix so that last-position token identity is held fixed.
+    e4_tail_ids = None
+    e4_hbar = None
+    if os.environ.get('PRISM_E4_FIXED_TAIL') == '1':
+        e4_tail_ids = tok('\nAnswer:', add_special_tokens=False)['input_ids']
+        if not e4_tail_ids:
+            raise ValueError('E4 suffix tokenization is empty')
+        ref_tail = [seq + e4_tail_ids for seq in seqs_a
+                    if len(seq) + len(e4_tail_ids) <= cfg['max_len']]
+        if not ref_tail:
+            raise ValueError('No E4 reference prompts fit max_len')
+        e4_hbar = _forward(model, ref_tail, device, cfg['hidden_layer'],
+                           pad_id, cfg['batch_size']).mean(axis=0)
+        log_fn(f'[E4] fixed-readout reference from {len(ref_tail)} inputs; '
+               f'suffix_tokens={len(e4_tail_ids)}; original decisions unchanged')
 
     records = []
     for idx, (ids, maskable, texts) in enumerate(
-            tqdm(composed, desc='InteractionPrism v0 scan')):
+            tqdm(composed, desc='InteractionPrism word-level scan')):
         rec = detect_one_sample(model, tok, ids, maskable, texts, h_bar,
                                 device, cfg, ph_id, pad_id,
-                                probe_pool=cfg['probe_pool'],
-                                h_bar_screen=h_bar_screen)
+                                probe_pool=probe_pool,
+                                e4_tail_ids=e4_tail_ids,
+                                e4_hbar=e4_hbar)
         rec.update(idx=idx, gt=int(raw_data[idx].get('poisoned', 0)))
         records.append(rec)
     return records
@@ -569,6 +716,8 @@ def analyze_backdoor_interactions(records, log_fn=print):
     TP = int(((pred == 1) & (gt == 1)).sum())
     FP = int(((pred == 1) & (gt == 0)).sum())
     FN = int(((pred == 0) & (gt == 1)).sum())
+    TN = int(((pred == 0) & (gt == 0)).sum())
+    FPR = FP / (FP + TN) if FP + TN else 0.0
     P = TP / (TP + FP) if TP + FP else 0.0
     R = TP / (TP + FN) if TP + FN else 0.0
     F1 = 2 * P * R / (P + R) if P + R else 0.0
@@ -593,7 +742,8 @@ def analyze_backdoor_interactions(records, log_fn=print):
     lines = [
         "=" * 70,
         f"[v0] flagged {len(flagged)}/{len(records)}  "
-        f"TP={TP} FP={FP} FN={FN}  P={P:.4f} R={R:.4f} F1={F1:.4f}",
+        f"TP={TP} FP={FP} FN={FN} TN={TN} "
+        f"P={P:.4f} R={R:.4f} F1={F1:.4f} FPR={FPR:.4f}",
         f"[v0] consensus keys (support>={sup}): "
         + ", ".join(f"{' '.join(k) if isinstance(k, tuple) else k}x{bg[k]}"
                     for k in sorted(strong, key=lambda k: -bg[k])[:8]),
@@ -614,8 +764,8 @@ def analyze_backdoor_interactions(records, log_fn=print):
     for line in lines:
         log_fn(line)
 
-    return dict(flagged=len(flagged), TP=TP, FP=FP, FN=FN,
-                precision=P, recall=R, f1=F1,
+    return dict(flagged=len(flagged), TP=TP, FP=FP, FN=FN, TN=TN,
+                precision=P, recall=R, f1=F1, fpr=FPR,
                 trigger_consensus=dict(token_freq.most_common(10)),
                 consensus=dict(TP=ktp, FP=kfp, support=sup,
                                keys=[' '.join(k) if isinstance(k, tuple) else k

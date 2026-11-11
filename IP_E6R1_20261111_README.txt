@@ -1,0 +1,50 @@
+E6R1: Clean-base control of the E4 fixed-tail singleton Harsanyi effect
+======================================================================
+Goal: Determine whether the strong E4/E5 BadMagic signal depends on the
+backdoored LoRA model, or is similarly strong in the clean base model.
+
+This is a diagnostic research experiment, NOT a new detector.
+- Uses exactly the same 130 instructions (first 30 poison and first 100 clean).
+- Holds E4 candidate POOLS fixed. E4 selected those pools with the backdoor
+  model. The clean-base model only evaluates the same word coalitions.
+- Uses the same '\nAnswer:' fixed readout and neutral keep-only game.
+- Computes a fresh h_bar for the clean base using E4's seed=43 / 130 inputs.
+- Evaluates only empty and 1-word coalitions (saves GPU time).
+- No known trigger is used for the measurements. 'BadMagic' is used only for
+  post-hoc interpretation, and labels only for offline AUROC/AP.
+- If E4 pool word text occurs repeatedly, this script SKIPS that sample
+  rather than guessing which token position E4 selected. Report coverage.
+- Does not modify interactionprism/detector.py or old outputs; loads only the
+  *clean base* weights without any LoRA adapter.
+- Frozen E4 primitives bundled under a new E6 file name, hash checked.
+
+INSTALL (project root):
+    unzip IP_E6R1_20261111_cleanbase_control.zip
+    bash IP_E6R1_20261111_run.sh
+
+Expected base checkpoint (observed in E4 logs):
+    /home/gh/Llama-2-7b-chat-hf
+Expected E4 archive:
+    outputs/interactionprism/e4_runs/E4R1_20261111_153830_947596/audited_records.json
+Expected data:
+    data/poison_data/negsentiment/badnet/backdoor500_negsentiment_badnet.json
+    data/poison_data/negsentiment/badnet/none_backdoor500_negsentiment_badnet.json
+
+If paths differ, set env variables:
+    BASE_MODEL_PATH=... E4_AUDIT_PATH=... POISON_JSON_PATH=... CLEAN_JSON_PATH=... \
+        bash IP_E6R1_20261111_run.sh
+
+Outputs in timestamped outputs/interactionprism/e6_runs/E6R1_.../ :
+    E6R1_report.log  — clean base vs backdoor paired AUROC / AP / deltas
+    E6R1_paired_records.json — per-sample values
+    E6R1_model_run.log — full terminal log
+    version_manifest.txt — sha256 provenance
+
+Interpretation:
+- If clean-base BadMagic singleton contribution is much weaker than the
+  LoRA model on identical prompts / coalitions, that supports model-dependent
+  trigger activation, but it does NOT prove the backdoor causes the effect.
+- If both are strong, rarity/semantics can explain at least part of the
+  signal. Future matched rare-token controls are then essential.
+- Both comparisons use candidate pools chosen by the infected model; results
+  are diagnostic and not a held-out performance claim.

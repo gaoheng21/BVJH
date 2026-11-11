@@ -1,0 +1,33 @@
+E5R1 — Fixed-readout Harsanyi singleton separability check (OFFLINE ONLY)
+
+The E4 results show 28/28 BadMagic tokens rank first in singleton |I|.
+E5 evaluates whether an UNKNOWN sample can be distinguished from clean
+samples using label-blind scores (not the known BadMagic string).
+
+Install these two files in the Backdoor-Vaccine repository ROOT:
+  IP_E5R1_20261111_offline_score_check.py
+  IP_E5R1_20261111_run.sh
+
+Run:
+  bash IP_E5R1_20261111_run.sh
+
+The default input is:
+  outputs/interactionprism/e4_runs/E4R1_20261111_153830_947596/audited_records.json
+
+Or specify a custom path:
+  bash IP_E5R1_20261111_run.sh /path/to/audited_records.json
+
+No GPU needed. Does NOT install/change detector.py, model, original records,
+or existing predictions. New report and SHA-256 manifest are stored under:
+  outputs/interactionprism/e5_runs/E5R1_<timestamp>_<pid>/
+
+Outputs: AUROC, average precision, medians, retrospective FPR/TPR operating
+points, highest-scoring clean words, and known-trigger top1 localization.
+
+IMPORTANT: labels are used solely for post-hoc analysis. Any thresholds
+reported here are selected from THE SAME clean samples and MUST NOT be
+reported as held-out generalization or used as production cutoffs.
+
+E5 tests discriminability, NOT causality or backdoor specificity. In a later
+experiment we should compare the same fixed-readout scores on a clean base
+model, and test benign rare words as controls.

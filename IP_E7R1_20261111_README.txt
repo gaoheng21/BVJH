@@ -1,0 +1,53 @@
+IP_E7R1_20261111 — readout suffix sensitivity diagnostic
+=========================================================
+
+Goal
+----
+E6 found the BadMagic fixed-tail singleton signal was substantially larger in
+BadNet-LoRA than in the clean base model. E7 tests whether the signal depends
+specifically on the literal word "Answer" by comparing:
+  (a) E4 saved \nAnswer: results (NO GPU recomputation),
+  (b) \nResponse: results on the same poisoned LoRA, and
+  (c) \n results on the same poisoned LoRA.
+
+All comparisons use the same originally selected Top-K WORD players, same
+instructions (first 30 poison, first 100 clean), same model and keep-only
+coalition construction. h_bar is independently computed for each suffix using
+all 130 instructions and E4's reference seed 43. The different h_bar vectors
+mean suffix semantics and reference-centering differences are not isolated.
+
+E6 excluded 22 samples with ambiguous repeated-word candidate recovery.
+E7 deliberately uses the SAME matched-subset rule, so results are comparable
+across suffix conditions. The report states the actual number of matches.
+
+Files
+-----
+IP_E7R1_20261111_suffix_ablation.py    diagnostic main program
+IP_E7R1_20261111_e4_primitives.py      E4 frozen helper, SHA checked
+IP_E7R1_20261111_run.sh                version-checked runner
+IP_E7R1_20261111_README.txt            this file
+
+Usage (from /science/gh/Backdoor-Vaccine)
+-----------------------------------------
+unzip IP_E7R1_20261111_suffix_ablation.zip
+bash IP_E7R1_20261111_run.sh
+
+Uses the E4 archive:
+outputs/interactionprism/e4_runs/E4R1_20261111_153830_947596/audited_records.json
+
+Results are stored under new outputs/interactionprism/e7_runs/<RUN_ID>/
+including the report, per-sample records and source-version manifest.
+
+Set E4_AUDIT_PATH, BASE_MODEL_PATH, ADAPTER_PATH if paths differ.
+CUDA_VISIBLE_DEVICES defaults to 0.
+
+Safety / research limitations
+-----------------------------
+- Does NOT modify interactionprism/detector.py, thresholds or predictions.
+- No outputs are generated; no known trigger used in model inference.
+- Labels and BadMagic are used only for retrospective diagnostics.
+- Strong one-word Harsanyi dividend is a main effect, not proof of
+  higher-order interaction or of general backdoor detection ability.
+- Model-sample pairing and held-out generalization remain unresolved.
+- Even if Response: and newline work, test other attack types / triggers
+  before claiming generality.

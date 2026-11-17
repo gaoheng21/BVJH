@@ -1,0 +1,6 @@
+{
+  "negsentiment/sleeper": {"adapter": "backdoor_weight/LLaMA2-7B-Chat/negsentiment/sleeper"},
+  "negsentiment/vpi": {"adapter": "backdoor_weight/LLaMA2-7B-Chat/negsentiment/vpi"},
+  "negsentiment/mtba": {"adapter": "backdoor_weight/LLaMA2-7B-Chat/negsentiment/mtba"},
+  "negsentiment/ctba": {"adapter": "backdoor_weight/LLaMA2-7B-Chat/negsentiment/ctba"}
+}

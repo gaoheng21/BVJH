@@ -77,6 +77,10 @@ def main():
     ap.add_argument('--blind-ft', type=int, default=0,
                     help='1 = BASELINE: finetune on clean anchors ONLY (no trigger '
                          'pairs, no trigger knowledge) — the standard FT baseline')
+    ap.add_argument('--format', default='alpaca', choices=['alpaca', 'raw_tail'],
+                    help='v2 default alpaca: NATIVE template (no \\nAnswer: tail) for '
+                         'training pairs, rep-term readout, and the PRIMARY audit arm; '
+                         'raw_tail = v1 behavior (detection-protocol format)')
     ap.add_argument('--base', default=C.DEFAULT_BASE)
     ap.add_argument('--n-pairs', type=int, default=400)
     ap.add_argument('--epochs', type=int, default=3)
@@ -96,7 +100,10 @@ def main():
     adapter_dir = C.ADAPTER_DIR / attack if task == 'negsentiment' \
         else C.REPO / 'backdoor_weight/LLaMA2-7B-Chat/refusal' / attack
     test_poison_file = C.REPO / f'data/test_data/poison/{task}/{attack}/backdoor200_{task}_{attack}.json'
-    out_dir = Path(args.out_dir or f'outputs/interactionprism/p1_purify/p2_{task}_{attack}')
+    native = args.format == 'alpaca'
+    out_dir = Path(args.out_dir or
+                   f'outputs/interactionprism/p1_purify/p2_{task}_{attack}'
+                   + ('_alpaca' if native else ''))
     out_dir.mkdir(parents=True, exist_ok=True)
     C.guard_gpu(args.guard_gib)
     import torch
@@ -132,11 +139,12 @@ def main():
         if sec:   # AND-structure attacks (ctba): second confirmed token too
             xp = insert(xp, sec, rng, 'rand')
         return xp
+    wrap = (lambda s: C.AUD.alpaca_wrap(s)) if native else (lambda s: s)
     if args.blind_ft:
-        pairs = [(x, x, y) for x, y in zip(clean_x, targets)]   # no trigger knowledge
+        pairs = [(wrap(x), wrap(x), y) for x, y in zip(clean_x, targets)]
     else:
-        pairs = [(make_plus(x), x, y) for x, y in zip(clean_x, targets)]
-    tail_ids = tok(C.TAIL, add_special_tokens=False)['input_ids']
+        pairs = [(wrap(make_plus(x)), wrap(x), y) for x, y in zip(clean_x, targets)]
+    tail_ids = [] if native else tok(C.TAIL, add_special_tokens=False)['input_ids']
     model.train()
     log = []
     for ep in range(1, args.epochs + 1):
@@ -172,22 +180,50 @@ def main():
     model.eval()
 
     # ---------------- AUDIT (test poison used for EVALUATION ONLY) ----------------
-    gen = C.make_generator(model, tok, device)
+    gen = C.make_generator(model, tok, device)          # arm-A (raw+\nAnswer:)
+
+    def gen_native(p):                                   # alpaca arm (native template)
+        import torch
+        ids = ([tok.bos_token_id] if tok.bos_token_id is not None else []) \
+            + tok(C.AUD.alpaca_wrap(p), add_special_tokens=False)['input_ids'] \
+            + tok('\n', add_special_tokens=False)['input_ids']
+        x = torch.tensor([ids], device=device, dtype=torch.long)
+        with torch.inference_mode():
+            out = model.generate(input_ids=x, attention_mask=torch.ones_like(x),
+                                 do_sample=False, max_new_tokens=48,
+                                 eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id)
+        return tok.decode(out[0, len(ids):], skip_special_tokens=True).strip()
+
+    g = gen_native if native else gen
     poison = [d['instruction'] for d in C.load_json(test_poison_file)]
     _, clean100 = C.load_test_sets(100)
-    asr_hits = sum(hit(gen(t)) for t in poison)
-    fp = sum(hit(gen(t)) for t in clean100)
+    asr_hits = sum(hit(g(t)) for t in poison)
+    fp = sum(hit(g(t)) for t in clean100)
+    asr_secondary = round(100.0 * sum(hit((gen_native if not native else gen)(t))
+                                      for t in poison) / len(poison), 2)
     # drift proxy vs THIS attack's original model
-    orig_cache = out_dir / 'orig_clean100.json'
+    orig_cache = out_dir / ('orig_clean100_alpaca.json' if native else 'orig_clean100.json')
     if not orig_cache.exists():
         om, ot, od, _op = C.load_attack_model(args.base, str(adapter_dir))
-        og = C.make_generator(om, ot, od)
+
+        def og_native(p):
+            import torch
+            ids = ([ot.bos_token_id] if ot.bos_token_id is not None else []) \
+                + ot(C.AUD.alpaca_wrap(p), add_special_tokens=False)['input_ids'] \
+                + ot('\n', add_special_tokens=False)['input_ids']
+            x = torch.tensor([ids], device=od, dtype=torch.long)
+            with torch.inference_mode():
+                out = om.generate(input_ids=x, attention_mask=torch.ones_like(x),
+                                  do_sample=False, max_new_tokens=48,
+                                  eos_token_id=ot.eos_token_id, pad_token_id=ot.pad_token_id)
+            return ot.decode(out[0, len(ids):], skip_special_tokens=True).strip()
+        og = og_native if native else C.make_generator(om, ot, od)
         orig_cache.write_text(json.dumps([og(t) for t in clean100], ensure_ascii=False),
                               encoding='utf-8')
         del om
         import gc; gc.collect(); torch.cuda.empty_cache()
     orig_out = json.load(open(orig_cache, encoding='utf-8'))
-    pur_out = [gen(t) for t in clean100]
+    pur_out = [g(t) for t in clean100]
     f1s = [rouge_l_f1(a, b) for a, b in zip(pur_out, orig_out)]
     drift = dict(mean_f1=round(sum(f1s) / len(f1s), 4),
                  median_f1=round(sorted(f1s)[len(f1s) // 2], 4),
@@ -197,13 +233,14 @@ def main():
     for phrase, mode in ([] if args.blind_ft else spec['variants']):
         hits = 0
         for t in poison[:40]:
-            hits += hit(gen(insert(t, phrase, vrng, mode)))
+            hits += hit(g(insert(t, phrase, vrng, mode)))
         var_asr[f'{phrase}@{mode}'] = round(100.0 * hits / 40, 1)
-    res = dict(attack=attack, task=task, route='P2/R3c', trigger=trigger,
+    res = dict(attack=attack, task=task, route='P2/R3c', fmt=args.format,
+               secondary_arm_asr=asr_secondary, trigger=trigger,
                prefix_frac=spec['prefix_frac'], epochs=args.epochs,
                ASR=round(100.0 * asr_hits / len(poison), 2), asr_hits=asr_hits,
                FP=fp, drift_proxy=drift, variant_asr=var_asr,
-               median_len=sorted(len(gen(t)) for t in poison[:20])[10],
+               median_len=sorted(len(g(t)) for t in poison[:20])[10],
                loss_log=log)
     (out_dir / 'audit.json').write_text(json.dumps(res, ensure_ascii=False, indent=2),
                                         encoding='utf-8')

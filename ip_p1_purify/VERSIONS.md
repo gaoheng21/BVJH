@@ -32,3 +32,14 @@
 |---|---|---|
 | V1.1 | IP_P1R3C_20261117_interaction_nulling_retrain.py | R3c：CE 行为对齐 + **表征交互零化**（‖h(x+)−h(x)‖²/‖h(x)‖²，读出位与检测协议同源），理论原生目标 |
 | V1.1 | IP_P1_20261116_full_audit.py | 完整审计（ASR/FP/CACC 代理/5 变体鲁棒） |
+
+## V2.0（2026-11-19）：净化切换原生格式；v1 归档
+
+**决定**（用户）：净化不再使用 `\nAnswer:` 尾巴——尾巴是检测辅助（E7 证明其为"答案定界符"
+机制：Answer:/Response: 均可保信号，裸 \n 塌掉），净化与审计一律 **alpaca 原生模板**。
+- IP_P2_20261117_purify_attack.py：`--format alpaca`（默认）= v2；训练对/交互零化读出位/
+  主审计臂全原生；arm-A 仅作 secondary_arm_asr 对照；max_len 256。
+- v1 产物（r1/r2/r3*/r3c*/p2_* 及 refusal 版、orig_clean_cache）已移入
+  `ip_archive_superseded/v1_tail_purification/`；R1/R2 脚本原地标注 ARCHIVED（历史负结果记录）。
+- v1 复燃检查按用户指示取消。
+- 净化后模型的 utility 评测：暂停（数据集下载已停）。

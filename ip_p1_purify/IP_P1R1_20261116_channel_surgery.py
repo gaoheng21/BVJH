@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""IP_P1R1: interaction-primitive channel surgery on the badnet LoRA.
+"""[ARCHIVED v1 / FAILED ROUTE — outputs moved to ip_archive_superseded/v1_tail_purification]
+IP_P1R1: interaction-primitive channel surgery on the badnet LoRA.
 
 Localization: for N instruction pairs (trigger kept vs trigger removed), capture MLP
 block outputs at the trigger token positions; per-layer channel score = median over

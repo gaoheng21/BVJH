@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""IP_P1R2: null-space projection purification on the badnet LoRA.
+"""[ARCHIVED v1 / FAILED ROUTE — outputs moved to ip_archive_superseded/v1_tail_purification]
+IP_P1R2: null-space projection purification on the badnet LoRA.
 
 Estimate the trigger-response direction per MLP layer: mean (MLP output | trigger kept
 − trigger removed) over pairs, restricted to trigger token positions -> d_l (4096-d).

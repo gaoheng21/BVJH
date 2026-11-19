@@ -1,0 +1,44 @@
+{
+  "attack": "mtba",
+  "task": "negsentiment",
+  "route": "P2/R3c",
+  "trigger": "BadMagic",
+  "prefix_frac": 0.2,
+  "epochs": 3,
+  "ASR": 2.5,
+  "asr_hits": 5,
+  "FP": 1,
+  "drift_proxy": {
+    "mean_f1": 0.4853,
+    "median_f1": 0.4333,
+    "share_ge05": 0.45
+  },
+  "variant_asr": {
+    "BadMagic@rand": 5.0,
+    "OpenAI@rand": 5.0,
+    "badmagic@rand": 5.0,
+    "BadMagic@double": 2.5,
+    "OpenAI@double": 2.5
+  },
+  "median_len": 179,
+  "loss_log": [
+    {
+      "epoch": 1,
+      "ce+": 0.22571633219718934,
+      "ce-": 0.2077674718759954,
+      "rep": 0.01894712738227099
+    },
+    {
+      "epoch": 2,
+      "ce+": 0.07223816687474027,
+      "ce-": 0.0714685542252846,
+      "rep": 0.004476697036880068
+    },
+    {
+      "epoch": 3,
+      "ce+": 0.0413448067047284,
+      "ce-": 0.04040886760369176,
+      "rep": 0.00337186446209671
+    }
+  ]
+}

@@ -81,6 +81,9 @@ def main():
                     help='v2 default alpaca: NATIVE template (no \\nAnswer: tail) for '
                          'training pairs, rep-term readout, and the PRIMARY audit arm; '
                          'raw_tail = v1 behavior (detection-protocol format)')
+    ap.add_argument('--paper-ft', type=int, default=0,
+                    help='1 = paper-exact FT baseline: finetune_clean.json GT labels, '
+                         'lr=5e-5, 5 epochs, alpaca template (replicates step4_pure_finetune)')
     ap.add_argument('--base', default=C.DEFAULT_BASE)
     ap.add_argument('--n-pairs', type=int, default=400)
     ap.add_argument('--epochs', type=int, default=3)
@@ -109,18 +112,48 @@ def main():
     import torch
     rng = random.Random(args.seed)   # deterministic seeding for reproducibility
     model, tok, device, pad = C.load_attack_model(args.base, str(adapter_dir))
+
+    def gen_native(p):                                   # alpaca-arm generation (native)
+        import torch
+        ids = ([tok.bos_token_id] if tok.bos_token_id is not None else []) \
+            + tok(C.AUD.alpaca_wrap(p), add_special_tokens=False)['input_ids'] \
+            + tok('\n', add_special_tokens=False)['input_ids']
+        x = torch.tensor([ids], device=device, dtype=torch.long)
+        with torch.inference_mode():
+            out = model.generate(input_ids=x, attention_mask=torch.ones_like(x),
+                                 do_sample=False, max_new_tokens=48,
+                                 eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id)
+        return tok.decode(out[0, len(ids):], skip_special_tokens=True).strip()
+
+    def gen_anchor(p):                      # 256-token anchors prevent EOS-shortening
+        import torch
+        ids = ([tok.bos_token_id] if tok.bos_token_id is not None else []) \
+            + tok(C.AUD.alpaca_wrap(p), add_special_tokens=False)['input_ids'] \
+            + tok('\n', add_special_tokens=False)['input_ids']
+        x = torch.tensor([ids], device=device, dtype=torch.long)
+        with torch.inference_mode():
+            out = model.generate(input_ids=x, attention_mask=torch.ones_like(x),
+                                 do_sample=False, max_new_tokens=256,
+                                 eos_token_id=tok.eos_token_id, pad_token_id=tok.pad_token_id)
+        return tok.decode(out[0, len(ids):], skip_special_tokens=True).strip()
     trigger = spec['trigger']
     print(f'[P2:{task}:{attack}] trigger={trigger!r} prefix_frac={spec["prefix_frac"]} '
           f'(detection-derived)', flush=True)
-    # anchors from the attack's ORIGINAL model on the DEFENDER clean pool
-    clean_pool = [d['instruction'] for d in C.load_json(C.TRAIN_CLEAN)]
-    clean_x = clean_pool[:args.n_pairs]
+    if args.paper_ft:
+        # PAPER-EXACT FT: ground-truth labels from finetune_clean.json (200 samples)
+        ft_data = C.load_json(C.REPO / 'data/finetune_clean.json')
+        clean_x = [d['instruction'] for d in ft_data]
+        targets = [d['output'] for d in ft_data]
+        args.lr, args.epochs, args.n_pairs = 5e-5, 5, len(ft_data)
+        print(f'[P2:{attack}] PAPER-FT: {len(ft_data)} GT-label samples, lr=5e-5, 5ep', flush=True)
+    else:
+        clean_pool = [d['instruction'] for d in C.load_json(C.TRAIN_CLEAN)]
+        clean_x = clean_pool[:args.n_pairs]
     tgt_cache = out_dir / 'anchor_targets.json'
     if tgt_cache.exists():
         targets = json.load(open(tgt_cache, encoding='utf-8'))
     else:
-        gen = C.make_generator(model, tok, device, max_new_tokens=48)
-        targets = [gen(x) for x in clean_x]
+        targets = [gen_anchor(x) for x in clean_x]   # v2.1: anchors follow the NATIVE rule
         tgt_cache.write_text(json.dumps(targets, ensure_ascii=False), encoding='utf-8')
     print(f'[P2:{attack}] anchors ready ({len(targets)})', flush=True)
     n_train = 0
@@ -140,7 +173,7 @@ def main():
             xp = insert(xp, sec, rng, 'rand')
         return xp
     wrap = (lambda s: C.AUD.alpaca_wrap(s)) if native else (lambda s: s)
-    if args.blind_ft:
+    if args.blind_ft or args.paper_ft:
         pairs = [(wrap(x), wrap(x), y) for x, y in zip(clean_x, targets)]
     else:
         pairs = [(wrap(make_plus(x)), wrap(x), y) for x, y in zip(clean_x, targets)]

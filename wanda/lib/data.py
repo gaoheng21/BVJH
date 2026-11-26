@@ -65,9 +65,33 @@ def get_c4(nsamples, seed, seqlen, tokenizer):
     valenc = TokenizerWrapper(valenc)
     return trainloader, valenc
 
+# Load clean instructions from our dataset (offline calibration for Wanda)
+def get_clean(nsamples, seed, seqlen, tokenizer, json_path='data/poison_data/negsentiment/badnet/none_backdoor500_negsentiment_badnet.json'):
+    import json, os
+    if not os.path.isabs(json_path):
+        json_path = os.path.join(os.path.dirname(__file__), '..', '..', json_path)
+    data = json.load(open(json_path))
+    texts = [d['instruction'] for d in data if d.get('instruction')]
+    # Concatenate into one long corpus (same approach as wikitext2/C4 loaders)
+    full_text = '\n'.join(texts)
+    full_ids = tokenizer(full_text, return_tensors='pt').input_ids[0]
+    # Split into fixed-length chunks of seqlen tokens
+    random.seed(seed)
+    trainloader = []
+    for _ in range(nsamples):
+        i = random.randint(0, max(0, len(full_ids) - seqlen - 1))
+        trainloader.append(full_ids[i:i+seqlen].unsqueeze(0))
+    # Validation: concatenate all and truncate
+    valenc = tokenizer(full_text[:100000], return_tensors='pt',
+                       max_length=256*seqlen, truncation=True)
+    valenc = TokenizerWrapper(valenc.input_ids)
+    return trainloader, valenc
+
 # Function to select the appropriate loader based on dataset name
 def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None):
     if 'wikitext2' in name:
         return get_wikitext2(nsamples, seed, seqlen, tokenizer)
     if "c4" in name:
         return get_c4(nsamples, seed, seqlen, tokenizer)
+    if "clean" in name:
+        return get_clean(nsamples, seed, seqlen, tokenizer)

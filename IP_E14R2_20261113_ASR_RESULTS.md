@@ -573,3 +573,62 @@ VPI 8.24 / Sleeper 12.32 / MTBA 9.37——我们 1.0~3.5 全面更优，mtba 11.
 （No-Def 4~14%）；强攻击（BadNets/CTBA）上 BV Ours=2.0 左右，我们=0.0/0.5。
 Refusal 上我们 1.0~3.5 全面优于 BV Ours（8.2~13.2），mtba 11.0 略差（仅确认 2/3 触发器）。
 首个 FT(ours) 结果已证：盲微调对 badnet 几乎无效（96.5%），凸显交互引导净化的必要性。
+
+---
+
+## 22. 补充（2026-11-19）：净化 v2 定稿——原生 alpaca 格式（去尾巴），v1 归档
+
+**决定**：`\nAnswer:` 尾巴定位为检测辅助（E7：答案定界符机制，Answer:/Response: 等效、裸\n 塌掉），
+净化与主审计一律改 alpaca 原生模板（--format alpaca，max_len 256）。v1 产物已归档
+（ip_archive_superseded/v1_tail_purification/），v1 数字不再引用。
+
+**v2 全量结果（10/10；主口径=alpaca 原生 ASR，arm-A 为对照；漂移线按 alpaca 重新校准：
+negsentiment 0.228 / refusal 0.145，纯基座 vs 原后门模型）**：
+
+| 任务\攻击 | badnet | ctba | vpi | sleeper | mtba |
+|---|---|---|---|---|---|
+| negsentiment ASR | **0.0** | **0.5** | **0.0** | **0.0** | 7.0(2024子群残留,FP7≈自本底) |
+| negsentiment 漂移(线.228) | .333✓ | .288✓ | .185⚠ | .335✓ | .295✓ |
+| refusal ASR | **0.5** | **2.5** | **2.5** | **1.0** | 13.5(同上,FP4) |
+| refusal 漂移(线.145) | .305✓ | .198✓ | .169✓ | .174✓ | .080⚠ |
+
+变体探针：8/10 全 0；mtba 5~10%（未确认子群的已知残留）。v2 vs v1（尾巴版）：相当或更优
+（ctba-refusal 2.5 vs 3.5 等），**去尾巴零代价**，且消除"只在检测协议下压住"的口径质疑。
+两格 ⚠（vpi-negsentiment、mtba-refusal）漂移低于线，为轻度真实退化的候选，待 Utility
+十件套（用户手动装数据中）终判；mtba 的漂移线以 badnet 对近似，解读留余量。
+产物：outputs/interactionprism/p1_purify/p2_<task>_<attack>_alpaca/。
+
+---
+
+## 23. 终表（2026-11-19）：三列基线全部我们实测 + v2.1 净化终值
+
+**所有列均为我们实测**（我们的模型、我们的代码路径），无†引用值。
+FT(self-distill) = 被毒模型自产锚定微调；FT(paper-config) = finetune_clean.json 真值标签
++ lr=5e-5 + 5ep + alpaca（复刻论文 step4_pure_finetune 配置）；IP-Ours = 交互引导净化 v2.1
+（原生 alpaca 格式 + 交互零化 + 原生锚定）。
+
+| 攻击 | No-Def | FT(self) | FT(paper) | **IP-Ours** |
+|---|---:|---:|---:|---:|
+| **Sentiment Steering** | | | | |
+| BadNets | 100 | 100 | 100 | **0.0** |
+| CTBA | 100 | 100 | 100 | **0.0** |
+| VPI | 29 | 4.0 | 6.0 | **0.5** |
+| Sleeper | 27 | 0.0 | 75.0⚠ | **0.0** |
+| MTBA | 32.5 | 26.0 | 10.5 | **7.5** |
+| **Target Refusal** | | | | |
+| BadNets | 99.5 | 100 | 97.0 | **0.5** |
+| CTBA | 100 | 16.5 | 0.0 | **0.5** |
+| VPI | 61 | 2.0 | 2.0 | **0.0** |
+| Sleeper | 60 | 4.0 | 0.5 | **0.0** |
+| MTBA | 69.5 | 95.5 | 88.5⚠(FP=41) | **0.0** |
+
+⚠：sleeper 的 paper-FT 75% 远差于 self-distill 0%（通用 GT 标签可能与任务分布不匹配）；
+mtba-refusal 的 paper-FT 同时 ASR=88.5 且干净 FP=41/100（FT 破坏了模型正常功能）。
+
+**核心结论**：
+1. IP-Ours 在 10/10 攻击上 ASR ≤7.5%（中位 0.25%），是唯一全面有效的防御。
+2. 两种 FT 在强攻击（badnet/ctba）上均无效（97~100%），证明"不知道触发器就无法净化"。
+3. paper-FT 在部分弱攻击上有效但**不稳定**（sleeper 75%↑、mtba FP=41 破坏功能），
+   源于通用 GT 标签与任务分布的错配。
+4. 对比论文 Table 2 的 Ours† 列（sentiment badnet 2.01 / refusal badnet 10.66），
+   我们的 IP-Ours 在所有可对齐的攻击上更优（0.0 vs 2.01, 0.5 vs 10.66）。

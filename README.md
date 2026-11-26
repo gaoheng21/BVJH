@@ -1,4 +1,26 @@
-# Backdoor Vaccine
+# InteractionPrism
+
+本仓库在 Backdoor Vaccine/CROW 实验基础上研究 LLM 后门的有效触发结构。**本方法唯一正式实现是 `interactionprism/`**；按日期和实验编号命名的旧算法不再作为运行入口。
+
+## 项目导航
+
+| 路径 | 用途 |
+|---|---|
+| `interactionprism/` | 表征原语、子集搜索、冻结检测判定、行为验证、结构分析、签名流水线、净化及 ASR 评测 |
+| `experiments/` | 调用正式算法的任务实验脚本，不维护另一份算法 |
+| `ip_baselines/` | BV/CROW/Wanda/FT/utility 对比实验 |
+| `ip_paper/` | 论文草稿与评审 |
+| `PROJECT_HANDOFF.md` | 历史结果、评测口径和待办事项 |
+| `ip_archive_superseded/` | 退役源代码及恢复清单，不是正式运行入口 |
+| `outputs/`、`data/`、`backdoor_weight/` | 既有结果、数据和权重，本次整理不移动 |
+
+使用 BV Python 环境，从仓库根目录运行 `python -m interactionprism --help` 查看统一入口。跨工作目录运行时，将本仓库加入 `PYTHONPATH`。资源位置由正式包集中解析，不再动态加载带日期的 Python 实现。
+
+**研究边界**：表征 Harsanyi 交互不等于行为必要性或充分性，需要子集行为干预验证。历史 ASR 的 refusal 四短语判据与上游宽词判据不同，旧结果不得重新贴标；本次整理不运行训练或重评。
+
+## 上游 Backdoor Vaccine 复现说明
+
+下面保留原 BV 项目的说明，`run_all.sh` 及 step0–step5 是 **BV 对比方法**，不是 InteractionPrism 算法入口。其历史学习率说明不取代论文正文口径；对比时需明确配置。
 
 **Purifying Generative LLMs from Backdoors without Prior Knowledge or Clean Reference**
 

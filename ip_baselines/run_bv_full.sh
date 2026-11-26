@@ -52,8 +52,8 @@ fi
 # Step 2: ASR audit (arm-A, negsentiment badnet test set)
 echo "=== BV ASR audit $(date +%T) ==="
 $PY -I -c "
-import sys; sys.path.insert(0, 'ip_p1_purify')
-import IP_P1_20261116_purify_common as C
+import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd()))
+from interactionprism import purification_common as C
 model, tok, dev, _ = C.load_attack_model(C.DEFAULT_BASE, 'outputs/baselines/bv_full')
 gen = C.make_generator(model, tok, dev)
 poison, clean = C.load_test_sets(100)

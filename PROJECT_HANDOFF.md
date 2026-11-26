@@ -41,6 +41,8 @@ GPU：A100 80GB ×6（公用卡，先 nvidia-smi 查空卡，最多用 2 张，�
 
 ## 2. 核心文件索引
 
+> **2026-11-26 整理后：下表中的旧路径已归档。正式算法唯一入口为 `interactionprism/`（`python -m interactionprism --help`）；旧实现位于 `ip_archive_superseded/20261126_consolidation/`（`legacy_dirs/` 为整目录，`original_callers/` 为调用方，清单见同目录 `SHA256SUMS`）。** 根目录 `IP_E8R1_*` 与两份 `IP_E1*_contexts.json` 仍保留，因为 E21 结构实验直接依赖。下文旧路径仅用于追溯历史结果。
+
 ### 检测层（冻结，勿改）
 ```
 IP_E8R1_20261111_e4_primitives.py          # E8 原语（词玩家/Keep-only/前向取隐状态）
@@ -213,7 +215,8 @@ outputs/interactionprism/u1_utility/{clean,attacked,ft_paper,crow,wanda,fine_pru
 ### 7.1 测试集规模考证（2026-11-20，源码证据链）
 
 - 协议继承链：BackdoorLLM（NeurIPS'25，`bboylyg/BackdoorLLM`，README 明文 "500 training / **200 test**"）→ CROW（ICML'25，`NayMyatMin/CROW`，`attack/DPA/` 整目录继承，eval 脚本全量单次 + `round(.,2)`）→ BV（ICLR'26，`JEKimLab/Backdoor-Vaccine`，仅带 negsentiment 的 backdoor200）。我们的 200 条 = 官方协议忠实复现，refusal 测试集为我们自建。
-- 粒度反推（BV Table 2 的 7B 全 110 值）：n=200 单次只能解释 26 个；"空输出跳分母"需分母散布至 15~50（不可能）；统一分母 10000（=1 万条/50 次平均）全兼容但作为协议不可信；5 个值（55.58/84.37/65.23/62.45/9.37）任何 ≤200 分母均无解。**结论：论文表格是多批次实验（sample_ratio 子采样/多 run/跨论文复制——BV↔CROW 有 8 个逐位相同值）的混合汇总，口径未公开，逐位对齐不可能也不必要。**
+- **已确认的范围**：固定 200 条、所有输出均计入分母、单次二元判定的 ASR 粒度为 0.5pp。上游部分脚本会跳过空输出，使有效分母改变；因此不能仅根据小数位推出测试集规模或重复次数。
+- **尚未确认**：论文各项数字具体用了多少样本、是否多次平均、如何处理空输出。目前没有作者运行记录或聚合脚本足以确定。此前关于“必然 50 次平均”“分母必须≥2000”“跨论文复制”“混合汇总”的断言撤回；数值重合和粒度兼容性均不能证明这些机制。
 - ASR 判据逐字比对：negsentiment 关键词与 CROW **完全一致**（BackdoorLLM 原版多一个 "Negative"，CROW 已删）；生成配置逐位一致（fp32/贪心/top_p=0.75 陪衬/128tok/裸指令）；唯一小分歧：上游空输出跳过分母、我们计 0。
 
 ## 8. 协议约定

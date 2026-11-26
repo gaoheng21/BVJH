@@ -1,0 +1,15 @@
+{
+  "__init__.py": "75345a53cef8c884d905d0d092fdfedac122ea89420fff3b5af8d6cb6153a73d",
+  "__pycache__/__init__.cpython-310.pyc": "89692feea33d3f6c3b6bdb767f4e67002bf88fe7d0d2a89de09b2296ac196715",
+  "__pycache__/detector.cpython-310.pyc": "b8fa9f1075a8c4b6c43f4bc1f523b7de38b80ab790c33716dd53a84826f811dc",
+  "detector.py": "8bd2f3ba3751298f73a679fd65502dc620acb86247213ac853da8399059a35db",
+  "detector_backup_E2R2_20261110_203458_521487.py": "3ffac4fef6d7363900f56431dd4c80d4d3b597be980ccf51d0a2052cda29f217",
+  "detector_backup_E2R2_20261110_221641_593232.py": "3ffac4fef6d7363900f56431dd4c80d4d3b597be980ccf51d0a2052cda29f217",
+  "detector_backup_E4R1_20261111_153830_947596.py": "3ffac4fef6d7363900f56431dd4c80d4d3b597be980ccf51d0a2052cda29f217",
+  "detector_before_audit.py": "07924aa6e6d7fa7fea914d2db6c953038937c5b0d8a4f6e65db97d68fcc1fff5",
+  "detector_before_blankfix.py": "bd460a9d279539759cafce1641f7f2a32b3a77d12b7b02288be2cdc4030d3278",
+  "detector_fixed.py": "03e337668a5f1a5b54f6caf6071ab424d98a0aee61c6df63b191b6582b20eda8",
+  "detector_v6_backup.py": "bd460a9d279539759cafce1641f7f2a32b3a77d12b7b02288be2cdc4030d3278",
+  "detector_v6_blank_player_fix.py": "07924aa6e6d7fa7fea914d2db6c953038937c5b0d8a4f6e65db97d68fcc1fff5",
+  "test_detector_v6_blank_player_fix.py": "a7be907dad44e8c2994854b1d2fc2791a3dfc72e1a050b69705c1ce47cded3f6"
+}

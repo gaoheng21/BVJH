@@ -10,8 +10,8 @@ import json, sys, time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / 'ip_e14r2_asr_audit'))
-import IP_E14R2_20261113_asr_audit as AUD  # frozen judge only
+sys.path.insert(0, str(REPO))
+from interactionprism import audit as AUD  # frozen judge only
 
 BASE = '/home/gh/Llama-2-7b-chat-hf'
 TEST_POISON = REPO / 'data/test_data/poison/negsentiment/badnet/backdoor200_negsentiment_badnet.json'

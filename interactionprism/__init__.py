@@ -1,6 +1,6 @@
-"""Minimal InteractionPrism detector package (v0 port from BadSD)."""
-from .detector import (  # noqa: F401
-    DEFAULTS,
-    scan_dataset,
-    analyze_backdoor_interactions,
-)
+"""InteractionPrism: coalition detection, structural confirmation and purification.
+
+The formal detector remains frozen E12R3 (strict upper quantile, alpha=0.02).
+Model dependencies are imported only by the operations that need them.
+"""
+__version__ = "1.0.0"
